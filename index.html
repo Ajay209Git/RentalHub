@@ -5,6 +5,7 @@
   <title>Rental Hub Portal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"></script>
 </head>
 <body>
   <header>
@@ -19,10 +20,6 @@
     </div>
     <input type="text" id="searchInput" placeholder="Search by location, title, or price...">
   </header>
-  <div id="verify-email-bar" class="hidden">
-    <span>Please verify your email to use all features.</span>
-    <button id="resend-verify-btn">Resend Verification Email</button>
-  </div>
   <main>
     <div id="properties" class="property-list"></div>
     <div id="noResults" class="hidden">No properties found.</div>
@@ -30,7 +27,7 @@
   <footer>
     <p>&copy; 2025 Rental Hub. All rights reserved.</p>
   </footer>
-  <!-- Modals for Auth, Password Reset, Add Property -->
+  <!-- Modals for Auth, Add Property, Admin -->
   <div id="auth-modal" class="modal hidden">
     <div class="modal-content">
       <span class="close" id="close-auth">&times;</span>
@@ -66,8 +63,7 @@
         <input type="text" id="prop-location" placeholder="Location" required><br>
         <input type="number" id="prop-price" placeholder="Price" required><br>
         <textarea id="prop-desc" placeholder="Description" required></textarea><br>
-        <input type="url" id="prop-img" placeholder="Image URL (or upload below)"><br>
-        <input type="file" id="prop-imgfile" accept="image/*"><br>
+        <input type="file" id="prop-imgfile" accept="image/*" required><br>
         <button type="submit">Submit Property</button>
         <div id="add-error" class="error-msg"></div>
         <div id="add-success" class="success-msg"></div>
