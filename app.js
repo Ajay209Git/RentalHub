@@ -43,24 +43,35 @@ const closePwReset = document.getElementById('close-pwreset');
 // --- Auth State ---
 let currentUser = null;
 const ADMIN_EMAILS = ['admin@rentalhub.com']; // Change to your admin email(s)
-
 let properties = [];
 
-// --- Utility: Modal Show/Hide ---
-function showModal(modal) { modal.classList.remove('hidden'); }
-function hideModal(modal) { modal.classList.add('hidden'); }
+// --- Modal Helpers ---
+function closeAllModals() {
+  document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+}
 
-// --- Auth Modals & Password Reset ---
-loginBtn.onclick = () => { showAuthModal('login'); };
-signupBtn.onclick = () => { showAuthModal('signup'); };
+// Attach modal logic for open/close
+loginBtn.onclick = () => { closeAllModals(); showAuthModal('login'); };
+signupBtn.onclick = () => { closeAllModals(); showAuthModal('signup'); };
 logoutBtn.onclick = () => { signOut(auth); };
-addPropBtn.onclick = () => { showModal(addModal); };
-adminBtn.onclick = () => { loadPending(); showModal(adminModal); };
-forgotPwLink.onclick = (e) => { e.preventDefault(); hideModal(authModal); showModal(pwResetModal); };
-closePwReset.onclick = () => hideModal(pwResetModal);
-document.getElementById('close-auth').onclick = () => hideModal(authModal);
-document.getElementById('close-add').onclick = () => hideModal(addModal);
-document.getElementById('close-admin').onclick = () => hideModal(adminModal);
+addPropBtn.onclick = () => { closeAllModals(); showModal(addModal); };
+adminBtn.onclick = () => { closeAllModals(); loadPending(); showModal(adminModal); };
+
+document.getElementById('close-auth').onclick = closeAllModals;
+document.getElementById('close-add').onclick = closeAllModals;
+document.getElementById('close-admin').onclick = closeAllModals;
+if (closePwReset) closePwReset.onclick = closeAllModals;
+
+// Click outside modal closes all
+window.addEventListener('mousedown', function(e) {
+  document.querySelectorAll('.modal').forEach(modal => {
+    if (!modal.classList.contains('hidden') && !modal.querySelector('.modal-content').contains(e.target) && !e.target.classList.contains('close')) {
+      modal.classList.add('hidden');
+    }
+  });
+});
+
+function showModal(modal) { modal.classList.remove('hidden'); }
 
 // Auth form logic
 function showAuthModal(type) {
@@ -72,6 +83,9 @@ function showAuthModal(type) {
   showModal(authModal);
 }
 
+forgotPwLink.onclick = (e) => { e.preventDefault(); closeAllModals(); showModal(pwResetModal); };
+
+// --- Auth ---
 document.getElementById('auth-form').onsubmit = async (e) => {
   e.preventDefault();
   const type = e.target.dataset.type;
@@ -81,12 +95,12 @@ document.getElementById('auth-form').onsubmit = async (e) => {
   try {
     if (type === 'login') {
       await signInWithEmailAndPassword(auth, email, password);
-      hideModal(authModal);
+      closeAllModals();
     } else {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await sendEmailVerification(cred.user);
       alert('Verification email sent. Please verify before using the portal.');
-      hideModal(authModal);
+      closeAllModals();
     }
   } catch (err) {
     document.getElementById('auth-error').innerText = err.message;
@@ -122,7 +136,7 @@ async function updateAuthUI() {
     logoutBtn.style.display = '';
     addPropBtn.style.display = '';
     adminBtn.style.display = ADMIN_EMAILS.includes(currentUser.email) ? '' : 'none';
-    await currentUser.reload?.(); // get fresh token state
+    await currentUser.reload?.();
     if (currentUser.emailVerified) {
       verifyEmailBar.classList.add('hidden');
       fetchProperties();
@@ -268,7 +282,7 @@ document.getElementById('add-form').onsubmit = async (e) => {
     document.getElementById('add-success').innerText = 'Property submitted for approval!';
     document.getElementById('add-form').reset();
     setTimeout(() => {
-      hideModal(addModal);
+      closeAllModals();
       document.getElementById('add-success').innerText = '';
     }, 1500);
   } catch (err) {
