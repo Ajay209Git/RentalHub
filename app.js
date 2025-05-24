@@ -1,30 +1,156 @@
-// app.js (Firebase Modular SDK, works on GitHub Pages via CDN)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-analytics.js";
-import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-firestore.js";
+import { getFirestore, collection, getDocs, addDoc, updateDoc, doc, query, where } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-auth.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-storage.js";
 
-// Your web app's Firebase configuration
+// --- Firebase Config ---
 const firebaseConfig = {
   apiKey: "AIzaSyC-gonNSLiFX2I5yscemPlYsDpJsnywsm0",
   authDomain: "rentalhub-143f5.firebaseapp.com",
   projectId: "rentalhub-143f5",
-  storageBucket: "rentalhub-143f5.firebasestorage.app",
+  storageBucket: "rentalhub-143f5.appspot.com",
   messagingSenderId: "782996801678",
   appId: "1:782996801678:web:12fa8f937e448919e5e1df",
   measurementId: "G-DZBDKXNVJM"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db = getFirestore(app);
+const auth = getAuth(app);
+const storage = getStorage(app);
 
-// DOM Elements
+// --- DOM Elements ---
 const propertiesContainer = document.getElementById('properties');
 const searchInput = document.getElementById('searchInput');
 const noResultsDiv = document.getElementById('noResults');
+const userEmailSpan = document.getElementById('user-email');
+const loginBtn = document.getElementById('login-btn');
+const signupBtn = document.getElementById('signup-btn');
+const logoutBtn = document.getElementById('logout-btn');
+const addPropBtn = document.getElementById('add-prop-btn');
+const adminBtn = document.getElementById('admin-btn');
+const authModal = document.getElementById('auth-modal');
+const addModal = document.getElementById('add-modal');
+const adminModal = document.getElementById('admin-modal');
+const verifyEmailBar = document.getElementById('verify-email-bar');
+const resendVerifyBtn = document.getElementById('resend-verify-btn');
+const pwResetModal = document.getElementById('pwreset-modal');
+const forgotPwLink = document.getElementById('forgot-pw-link');
+const closePwReset = document.getElementById('close-pwreset');
+
+// --- Auth State ---
+let currentUser = null;
+const ADMIN_EMAILS = ['admin@rentalhub.com']; // Change to your admin email(s)
+
 let properties = [];
 
+// --- Utility: Modal Show/Hide ---
+function showModal(modal) { modal.classList.remove('hidden'); }
+function hideModal(modal) { modal.classList.add('hidden'); }
+
+// --- Auth Modals & Password Reset ---
+loginBtn.onclick = () => { showAuthModal('login'); };
+signupBtn.onclick = () => { showAuthModal('signup'); };
+logoutBtn.onclick = () => { signOut(auth); };
+addPropBtn.onclick = () => { showModal(addModal); };
+adminBtn.onclick = () => { loadPending(); showModal(adminModal); };
+forgotPwLink.onclick = (e) => { e.preventDefault(); hideModal(authModal); showModal(pwResetModal); };
+closePwReset.onclick = () => hideModal(pwResetModal);
+document.getElementById('close-auth').onclick = () => hideModal(authModal);
+document.getElementById('close-add').onclick = () => hideModal(addModal);
+document.getElementById('close-admin').onclick = () => hideModal(adminModal);
+
+// Auth form logic
+function showAuthModal(type) {
+  document.getElementById('auth-modal-title').innerText = type === 'login' ? 'Login' : 'Sign Up';
+  document.getElementById('auth-submit-btn').innerText = type === 'login' ? 'Login' : 'Sign Up';
+  document.getElementById('auth-form').dataset.type = type;
+  document.getElementById('auth-error').innerText = '';
+  document.getElementById('auth-form').reset();
+  showModal(authModal);
+}
+
+document.getElementById('auth-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const type = e.target.dataset.type;
+  const email = document.getElementById('auth-email').value;
+  const password = document.getElementById('auth-password').value;
+  document.getElementById('auth-error').innerText = '';
+  try {
+    if (type === 'login') {
+      await signInWithEmailAndPassword(auth, email, password);
+      hideModal(authModal);
+    } else {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(cred.user);
+      alert('Verification email sent. Please verify before using the portal.');
+      hideModal(authModal);
+    }
+  } catch (err) {
+    document.getElementById('auth-error').innerText = err.message;
+  }
+};
+
+// Password Reset
+document.getElementById('pwreset-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('pwreset-email').value;
+  const statusDiv = document.getElementById('pwreset-status');
+  statusDiv.innerText = '';
+  try {
+    await sendPasswordResetEmail(auth, email);
+    statusDiv.innerText = 'Password reset email sent!';
+  } catch (err) {
+    statusDiv.innerText = err.message;
+  }
+};
+
+// --- Auth State Change ---
+onAuthStateChanged(auth, async user => {
+  currentUser = user;
+  await updateAuthUI();
+});
+
+// --- Update UI based on user/auth ---
+async function updateAuthUI() {
+  if (currentUser) {
+    userEmailSpan.innerText = currentUser.email;
+    loginBtn.style.display = 'none';
+    signupBtn.style.display = 'none';
+    logoutBtn.style.display = '';
+    addPropBtn.style.display = '';
+    adminBtn.style.display = ADMIN_EMAILS.includes(currentUser.email) ? '' : 'none';
+    await currentUser.reload?.(); // get fresh token state
+    if (currentUser.emailVerified) {
+      verifyEmailBar.classList.add('hidden');
+      fetchProperties();
+    } else {
+      verifyEmailBar.classList.remove('hidden');
+      propertiesContainer.innerHTML = '<p style="text-align:center;">Please verify your email to view or add properties.</p>';
+    }
+  } else {
+    userEmailSpan.innerText = '';
+    loginBtn.style.display = '';
+    signupBtn.style.display = '';
+    logoutBtn.style.display = 'none';
+    addPropBtn.style.display = 'none';
+    adminBtn.style.display = 'none';
+    verifyEmailBar.classList.add('hidden');
+    fetchProperties();
+  }
+}
+
+// Resend Verification Email
+resendVerifyBtn.onclick = async () => {
+  if (currentUser) {
+    await sendEmailVerification(currentUser);
+    alert('Verification email sent!');
+  }
+};
+
+// --- Fetch Properties (Only approved) ---
 window.addEventListener('DOMContentLoaded', () => {
   fetchProperties();
   searchInput.addEventListener('input', handleSearch);
@@ -33,9 +159,10 @@ window.addEventListener('DOMContentLoaded', () => {
 async function fetchProperties() {
   properties = [];
   try {
-    const querySnapshot = await getDocs(collection(db, "properties"));
+    const q = query(collection(db, "properties"), where("approved", "==", true));
+    const querySnapshot = await getDocs(q);
     querySnapshot.forEach((doc) => {
-      properties.push(doc.data());
+      properties.push({ ...doc.data(), id: doc.id });
     });
     displayProperties(properties);
   } catch (err) {
@@ -104,4 +231,100 @@ function handleSearch() {
     (prop.Price && String(prop.Price).toLowerCase().includes(query))
   );
   displayProperties(filtered);
+}
+
+// --- Add Property Logic (with optional image upload) ---
+document.getElementById('add-form').onsubmit = async (e) => {
+  e.preventDefault();
+  document.getElementById('add-error').innerText = '';
+  document.getElementById('add-success').innerText = '';
+  if (!currentUser || !currentUser.emailVerified) {
+    document.getElementById('add-error').innerText = 'Please log in and verify your email to submit property.';
+    return;
+  }
+  const title = document.getElementById('prop-title').value;
+  const location = document.getElementById('prop-location').value;
+  const price = document.getElementById('prop-price').value;
+  const desc = document.getElementById('prop-desc').value;
+  let imgUrl = document.getElementById('prop-img').value;
+  const imgFile = document.getElementById('prop-imgfile').files[0];
+
+  try {
+    if (imgFile) {
+      const fileRef = storageRef(storage, `property-images/${Date.now()}_${imgFile.name}`);
+      await uploadBytes(fileRef, imgFile);
+      imgUrl = await getDownloadURL(fileRef);
+    }
+    await addDoc(collection(db, "properties"), {
+      Title: title,
+      Location: location,
+      Price: price,
+      Description: desc,
+      ImageURL: imgUrl,
+      email: currentUser.email,
+      approved: false,
+      created: Date.now()
+    });
+    document.getElementById('add-success').innerText = 'Property submitted for approval!';
+    document.getElementById('add-form').reset();
+    setTimeout(() => {
+      hideModal(addModal);
+      document.getElementById('add-success').innerText = '';
+    }, 1500);
+  } catch (err) {
+    document.getElementById('add-error').innerText = err.message;
+  }
+};
+
+// --- Admin Panel Logic ---
+async function loadPending() {
+  document.getElementById('pending-properties').innerHTML = 'Loading...';
+  const q = query(collection(db, "properties"), where("approved", "==", false));
+  const querySnapshot = await getDocs(q);
+  const arr = [];
+  querySnapshot.forEach(docSnap => {
+    const d = docSnap.data();
+    arr.push({ ...d, id: docSnap.id });
+  });
+  if (arr.length === 0) {
+    document.getElementById('pending-properties').innerHTML = '<i>No pending properties.</i>';
+    return;
+  }
+  document.getElementById('pending-properties').innerHTML = '';
+  arr.forEach(prop => {
+    const card = document.createElement('div');
+    card.className = 'property-card';
+    card.innerHTML = `
+      <img src="${prop.ImageURL || ''}" class="property-img" alt="">
+      <div class="property-details">
+        <div class="property-title">${prop.Title}</div>
+        <div class="property-location">${prop.Location}</div>
+        <div class="property-price">₹${prop.Price}</div>
+        <div class="property-desc">${prop.Description}</div>
+        <div style="font-size:0.9em;color:#666">By: ${prop.email}</div>
+        <button data-approve="${prop.id}">Approve</button>
+        <button data-reject="${prop.id}" style="margin-left:8px;background:#e53935;color:#fff;">Reject</button>
+      </div>
+    `;
+    document.getElementById('pending-properties').appendChild(card);
+  });
+  // Add approve/reject handlers
+  document.querySelectorAll('[data-approve]').forEach(btn => {
+    btn.onclick = async () => {
+      await updateDoc(doc(db, "properties", btn.dataset.approve), { approved: true });
+      document.getElementById('admin-success').innerText = "Approved!";
+      setTimeout(() => { document.getElementById('admin-success').innerText = ''; }, 800);
+      loadPending();
+      fetchProperties();
+    };
+  });
+  document.querySelectorAll('[data-reject]').forEach(btn => {
+    btn.onclick = async () => {
+      await updateDoc(doc(db, "properties", btn.dataset.reject), { approved: false, rejected: true });
+      document.getElementById('admin-success').innerText = "Rejected!";
+      setTimeout(() => { document.getElementById('admin-success').innerText = ''; }, 800);
+      loadPending();
+      fetchProperties();
+    };
+  });
 }
